@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeatherCheck – Plan Your Tour</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+
+  <style>
+    /* ---------- Theme Toggle ---------- */
+    .theme-toggle{position:absolute;top:20px;right:20px;}
+    .theme-toggle input{display:none;}
+    .slider{
+      width:40px;height:20px;background:rgba(255,255,255,0.4);
+      border-radius:20px;display:inline-block;position:relative;cursor:pointer;
+    }
+    .slider::after{
+      content:"";width:18px;height:18px;background:#fff;border-radius:50%;
+      position:absolute;top:1px;left:1px;transition:transform 0.3s;
+    }
+    .theme-toggle input:checked + .slider::after{transform:translateX(20px);}
+    body.dark{background-color:#1e1e1e;color:#f1f1f1;}
+    body.dark .weather-container{background:rgba(40,40,40,0.7);}
+
+    /* ---------- Spinner ---------- */
+    .spinner{
+      position:fixed;top:50%;left:50%;width:60px;height:60px;margin:-30px 0 0 -30px;
+      border:6px solid rgba(255,255,255,0.3);border-top:6px solid #fff;
+      border-radius:50%;animation:spin 1s linear infinite;z-index:9999;
+    }
+    .hidden{display:none;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* ---------- Base ---------- */
+    body{
+      margin:0;font-family:'Inter',Segoe UI,Tahoma,Geneva,Verdana,sans-serif;
+      background:url("https://images.unsplash.com/photo-1501630834273-4b5604d2ee31?auto=format&fit=crop&w=1600&q=80") no-repeat center center fixed;
+      background-size:cover;min-height:100vh;display:flex;align-items:center;
+      justify-content:center;color:#fff;overflow:hidden;
+    }
+    body::before{
+      content:"";position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.35);z-index:-2;
+    }
+
+    /* Canvas overlay */
+    #weatherCanvas{
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      pointer-events:none;z-index:-1;
+    }
+
+    /* ---------- Card ---------- */
+    .weather-container{
+      background:rgba(255,255,255,0.15);
+      backdrop-filter:blur(12px);
+      border-radius:20px;
+      box-shadow:0 8px 25px rgba(0,0,0,0.2);
+      padding:30px;text-align:center;
+      width:min(90%,440px);
+      animation:fadeIn 1.2s ease-in-out;
+      box-sizing:border-box;
+      max-height:90vh;overflow-y:auto;
+    }
+    h1{margin:0;font-size:28px;font-weight:bold;}
+    p.tagline{margin:5px 0 20px;font-style:italic;opacity:.9;font-size:14px;}
+
+    /* Inputs */
+    .search-box{
+      display:flex;flex-wrap:wrap;justify-content:center;
+      gap:8px;margin-bottom:20px;
+    }
+    input[type="text"],input[type="date"]{
+      padding:10px;border:none;border-radius:20px;outline:none;font-size:15px;
+    }
+    button{
+      padding:10px 18px;border:none;border-radius:20px;
+      background:#0078ff;color:#fff;cursor:pointer;font-size:15px;
+      transition:background .3s;
+    }
+    button:hover{background:#005fcc;}
+
+    /* Weather info */
+    .weather-result lottie-player{width:120px;height:120px;margin-top:10px;}
+    .weather-result h3{margin:10px 0;font-size:22px;}
+    .details{
+      display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px;font-size:15px;
+    }
+    .detail-box{
+      background:rgba(255,255,255,0.25);padding:12px;border-radius:12px;
+      transition:transform .3s;
+    }
+    .detail-box:hover{transform:scale(1.05);}
+
+    /* Forecast */
+    #forecastContainer{
+      margin-top:20px;display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(100px,1fr));
+      gap:12px;width:100%;max-height:250px;overflow-y:auto;padding-right:6px;
+      scrollbar-width:thin;
+    }
+    #forecastContainer::-webkit-scrollbar{width:6px;}
+    #forecastContainer::-webkit-scrollbar-thumb{
+      background:rgba(255,255,255,0.4);border-radius:3px;
+    }
+    .forecast-day{
+      background:rgba(255,255,255,0.25);
+      padding:10px;border-radius:12px;font-size:13px;text-align:center;
+    }
+    .forecast-day img{width:40px;margin:5px 0;}
+
+    @keyframes fadeIn{from{opacity:0;transform:scale(.9);}to{opacity:1;transform:scale(1);}}
+
+    @media(max-width:480px){
+      input[type="text"],input[type="date"]{width:100%;}
+      button{width:100%;}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Theme switch -->
+  <label class="theme-toggle">
+    <input type="checkbox" id="themeSwitch">
+    <span class="slider"></span>
+  </label>
+
+  <div id="spinner" class="spinner hidden"></div>
+  <canvas id="weatherCanvas"></canvas>
+
+  <div class="weather-container">
+    <h1>🌍 WeatherCheck</h1>
+    <p class="tagline">Plan your tour by city & start date</p>
+
+    <h1 id="cityTitle">🌍 WeatherCheck <button id="saveFav">⭐ Save</button></h1>
+    <div id="favList"></div>
+
+    <div class="search-box">
+      <input type="text" id="cityInput" placeholder="Enter city...">
+      <input type="date" id="startDate" placeholder="Start date">
+      <input type="date" id="endDate"   placeholder="End date">
+      <button type="button" onclick="getWeather()">Check</button>
+      <button type="button" id="geoBtn">📍 Use My Location</button>
+    </div>
+
+    <div class="weather-result" id="weatherResult">
+      <p>Fetching your location weather 🌤...</p>
+    </div>
+    <div id="forecastContainer"></div>
+  </div>
+
+  <div id="packingTips"
+       style="margin-top:20px;font-size:14px;
+              background:rgba(255,255,255,0.2);
+              padding:12px;border-radius:12px;display:none;">
+  </div>
+
+<script>
+/* ------------ Globals & Spinner ------------ */
+const spinner=document.getElementById("spinner");
+function showSpinner(){spinner.classList.remove("hidden");}
+function hideSpinner(){spinner.classList.add("hidden");}
+
+const weatherKey="96507f9b201a449c837111549251009";
+const unsplashKey="tqHqwovSaF-jsWNpr0D7XwjL1EXxqHl8AOZoyyhjSW4";
+
+/* ------------ Date limits ------------ */
+(function(){
+  const today=new Date();
+  const max=new Date();
+  max.setDate(today.getDate()+6);
+  const fmt=d=>d.toISOString().split('T')[0];
+  document.getElementById('startDate').min = fmt(today);
+  document.getElementById('startDate').max = fmt(max);
+  document.getElementById('endDate').min   = fmt(today);
+  document.getElementById('endDate').max   = fmt(max);
+})();
+
+/* ------------ Theme toggle ------------ */
+const themeSwitch=document.getElementById("themeSwitch");
+if(localStorage.getItem("theme")==="dark"){
+  themeSwitch.checked=true;
+  document.body.classList.add("dark");
+}
+themeSwitch.addEventListener("change",()=>{
+  document.body.classList.toggle("dark",themeSwitch.checked);
+  localStorage.setItem("theme",themeSwitch.checked?"dark":"light");
+});
+
+/* ------------ Canvas particles ------------ */
+const canvas=document.getElementById("weatherCanvas");
+const ctx=canvas.getContext("2d");
+let particles=[],mode="";
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+addEventListener("resize",resize);resize();
+function createParticles(){
+  particles=[];
+  const count=mode==="snow"?120:mode==="rain"?200:mode==="leaves"?60:80;
+  for(let i=0;i<count;i++){
+    particles.push({
+      x:Math.random()*canvas.width,
+      y:Math.random()*canvas.height,
+      size:mode==="snow"?1+Math.random()*3:mode==="rain"?1+Math.random()*2:
+           mode==="leaves"?8+Math.random()*12:2+Math.random()*3,
+      speed:mode==="snow"?0.5+Math.random()*1.5:mode==="rain"?4+Math.random()*4:
+            mode==="leaves"?1+Math.random()*2:0.5+Math.random()*1.5,
+      rot:Math.random()*2*Math.PI
+    });
+  }
+}
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  particles.forEach(p=>{
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    if(mode==="rain"){ctx.fillStyle="rgba(173,216,230,0.6)";ctx.fillRect(0,0,1,p.size*3);}
+    else if(mode==="snow"){ctx.fillStyle="rgba(255,255,255,0.8)";ctx.beginPath();ctx.arc(0,0,p.size,0,Math.PI*2);ctx.fill();}
+    else if(mode==="leaves"){ctx.rotate(p.rot);ctx.fillStyle="rgba(255,165,0,0.8)";ctx.beginPath();ctx.ellipse(0,0,p.size,p.size/2,0,0,2*Math.PI);ctx.fill();}
+    else {ctx.fillStyle="rgba(255,255,150,0.4)";ctx.beginPath();ctx.arc(0,0,p.size,0,Math.PI*2);ctx.fill();}
+    ctx.restore();
+    p.y+=p.speed;
+    if(mode==="leaves") p.x+=Math.sin(p.y/20)*0.5;
+    if(p.y>canvas.height){p.y=-10;p.x=Math.random()*canvas.width;}
+    if(mode==="leaves") p.rot+=0.01;
+  });
+  requestAnimationFrame(draw);
+}
+
+/* ------------ Weather Fetch ------------ */
+async function fetchWeather(query,date){
+  showSpinner();
+  try{
+    const url=`https://api.weatherapi.com/v1/forecast.json?key=${weatherKey}&q=${query}&days=7&aqi=no&alerts=no`;
+    const res=await fetch(url);
+    if(!res.ok) throw new Error("City not found");
+    const data=await res.json();
+
+    // Notifications
+    if("Notification" in window){
+      Notification.requestPermission().then(perm=>{
+        if(perm==="granted"){
+          const tomorrow=data.forecast.forecastday[1];
+          if(tomorrow.day.daily_chance_of_rain>60) new Notification("☔ Rain likely tomorrow!");
+          if(tomorrow.day.maxtemp_c>35) new Notification("🔥 Heatwave alert!");
+        }
+      });
+    }
+
+    const cond=data.current.condition.text.toLowerCase();
+    if(cond.includes("rain")) mode="rain";
+    else if(cond.includes("snow")||cond.includes("sleet")) mode="snow";
+    else if(cond.includes("autumn")||cond.includes("fall")) mode="leaves";
+    else mode="sunny";
+    createParticles();draw();
+
+    const lottieSrc = cond.includes("rain")
+      ? "https://assets6.lottiefiles.com/packages/lf20_jmBauU.json"
+      : cond.includes("snow")
+      ? "https://assets2.lottiefiles.com/private_files/lf30_poqmyc.json"
+      : cond.includes("cloud")
+      ? "https://assets2.lottiefiles.com/packages/lf20_vf3zpf.json"
+      : "https://assets1.lottiefiles.com/packages/lf20_ygiuluqn.json";
+
+    const weatherResult=document.getElementById("weatherResult");
+    weatherResult.innerHTML=`
+      <h3>${data.location.name}, ${data.location.country}</h3>
+      <lottie-player src="${lottieSrc}" background="transparent" speed="1" autoplay loop></lottie-player>
+      <p><strong>${data.current.temp_c}°C</strong> | ${data.current.condition.text}</p>
+      <div class="details">
+        <div class="detail-box">🌡 Feels: ${data.current.feelslike_c}°C</div>
+        <div class="detail-box">💧 Humidity: ${data.current.humidity}%</div>
+        <div class="detail-box">💨 Wind: ${data.current.wind_kph} kph</div>
+        <div class="detail-box">🕒 Local: ${data.location.localtime}</div>
+      </div>`;
+
+    const fc=document.getElementById("forecastContainer");
+    fc.innerHTML="<h3 style='grid-column:1/-1;'>7-Day Forecast</h3>";
+    data.forecast.forecastday.forEach(day=>{
+      fc.innerHTML+=`
+        <div class="forecast-day">
+          <div>${day.date}</div>
+          <img src="https:${day.day.condition.icon}">
+          <div>${day.day.avgtemp_c}°C</div>
+          <div>${day.day.condition.text}</div>
+        </div>`;
+    });
+
+    const tipBox=document.getElementById("packingTips");
+    let tipMsg="";
+    const chanceRain=Math.max(...data.forecast.forecastday.map(d=>d.day.daily_chance_of_rain||0));
+    const avgTemp=data.current.temp_c;
+    if(chanceRain>50) tipMsg+="☔ Pack a raincoat or umbrella. ";
+    if(avgTemp>30) tipMsg+="🧴 Bring sunscreen and stay hydrated. ";
+    if(avgTemp<10) tipMsg+="🧥 Carry a warm jacket or sweater. ";
+    if(!tipMsg) tipMsg="✅ Weather looks mild—pack as you like!";
+    tipBox.textContent=tipMsg;
+    tipBox.style.display="block";
+
+    await fetchCityImage(data.location.name);
+    localStorage.setItem("latestWeather",JSON.stringify(data));
+  }finally{
+    hideSpinner();
+  }
+}
+
+async function fetchCityImage(city){
+  try{
+    const url=`https://api.unsplash.com/search/photos?query=${encodeURIComponent(city)}&orientation=landscape&client_id=${unsplashKey}`;
+    const r=await fetch(url);
+    const j=await r.json();
+    if(j.results.length>0){
+      document.body.style.backgroundImage=`url('${j.results[0].urls.regular}')`;
+    }
+  }catch{}
+}
+
+function getWeather(){
+  const city=document.getElementById("cityInput").value.trim();
+  if(city) fetchWeather(city,"");
+}
+
+/* ------------ Geolocation ------------ */
+function success(pos){
+  const {latitude,longitude}=pos.coords;
+  fetchWeather(`${latitude},${longitude}`,"");
+}
+
+document.getElementById('geoBtn').addEventListener('click',()=>{
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(success,()=>alert("Location access denied."));
+  }
+});
+
+/* ------------ Favorites ------------ */
+const favBtn=document.getElementById('saveFav');
+const favList=document.getElementById('favList');
+function renderFavs(){
+  const favs=JSON.parse(localStorage.getItem('favorites'))||[];
+  favList.innerHTML=favs.map(c=>`<button class="favCity">${c}</button>`).join('');
+  document.querySelectorAll('.favCity').forEach(btn=>
+    btn.addEventListener('click',()=>fetchWeather(btn.textContent,""))
+  );
+}
+favBtn.addEventListener('click',()=>{
+  const city=document.getElementById('cityInput').value.trim();
+  if(!city) return;
+  const favs=JSON.parse(localStorage.getItem('favorites'))||[];
+  if(!favs.includes(city)) favs.push(city);
+  localStorage.setItem('favorites',JSON.stringify(favs));
+  renderFavs();
+});
+
+/* ------------ Auto-load ------------ */
+window.addEventListener("load",()=>{
+  renderFavs();
+  if(navigator.onLine){
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(success,
+        ()=>document.getElementById("weatherResult").textContent="Allow location or enter city manually.");
+    }
+  }else{
+    const cache=localStorage.getItem("latestWeather");
+    if(cache){
+      const data=JSON.parse(cache);
+      document.getElementById("weatherResult").innerHTML=`<h3>${data.location.name}</h3><p>${data.current.temp_c}°C (cached)</p>`;
+    }
+  }
+});
+</script>
+</body>
+</html>
+
+
+
